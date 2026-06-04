@@ -1,0 +1,14 @@
+[build]
+builder = "DOCKERFILE"
+
+[deploy]
+healthcheckPath = "/health"
+healthcheckTimeout = 30
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5
+
+# Variables que debes configurar en Railway:
+# API_KEY            → cadena random larga, igual en CRM env
+# WEBHOOK_URL        → https://inmobiliarialp.com/api/wa-incoming
+# WEBHOOK_SECRET     → otra cadena random
+# SESSION_DIR        → /app/sessions   (Railway crea volumen para persistir)
