@@ -394,6 +394,48 @@ app.get("/session/:tenantId/conversation", async (req, res) => {
   res.json({ ok: true, messages: all, within24h, last_inbound: lastIn?.ts || null });
 });
 
+// ── Lista de todas las conversaciones ──
+app.get("/session/:tenantId/conversations", async (req, res) => {
+  const { tenantId } = req.params;
+  const persisted = await loadMessageLog(tenantId);
+  const tenant = getTenant(tenantId);
+
+  // Merge y dedup
+  const seen = new Set();
+  const all = [...persisted, ...tenant.messages].filter(m => {
+    const k = m.message_id || (m.ts + m.text);
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+
+  // Agrupar por número del otro lado
+  const byPhone = {};
+  all.forEach(m => {
+    const other = m.direction === "out" ? m.to : m.from;
+    if (!other) return;
+    if (!byPhone[other]) byPhone[other] = { phone: other, messages: [] };
+    byPhone[other].messages.push(m);
+  });
+
+  const convs = Object.values(byPhone).map(c => {
+    const sorted = c.messages.sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    const last = sorted[sorted.length - 1];
+    const unread = sorted.filter(m => m.direction === "in").length;
+    return {
+      phone: c.phone,
+      profile_name: sorted.find(m => m.profile_name)?.profile_name || null,
+      last_message: last.text?.slice(0, 80) || `[${last.type || "media"}]`,
+      last_ts: last.ts,
+      last_direction: last.direction,
+      unread,
+      total: sorted.length
+    };
+  }).sort((a, b) => new Date(b.last_ts) - new Date(a.last_ts));
+
+  res.json({ ok: true, conversations: convs });
+});
+
 // ── Verificar si número existe en WA ──
 app.get("/session/:tenantId/check", async (req, res) => {
   const { tenantId } = req.params;
