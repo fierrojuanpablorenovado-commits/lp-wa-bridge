@@ -331,11 +331,22 @@ app.post("/session/:tenantId/send", async (req, res) => {
 
   try {
     const jid = phoneToJid(phone);
-    const exists = await tenant.sock.onWhatsApp(jid).catch(() => null);
-    if (!exists?.[0]?.exists) {
-      return res.status(400).json({ error: "number_not_on_whatsapp", phone });
+
+    // Resuelve JID canónico — WA puede devolver 521XXXXXXXXXX aunque preguntemos 52XXXXXXXXXX
+    let targetJid = jid;
+    try {
+      const check = await tenant.sock.onWhatsApp(jid);
+      if (check?.[0]?.exists) {
+        targetJid = check[0].jid;   // ← usar el JID real que devuelve WA
+      } else if (Array.isArray(check) && check.length > 0 && !check[0].exists) {
+        return res.status(400).json({ error: "number_not_on_whatsapp", phone });
+      }
+      // check vacío o null → intentar igual (número puede existir sin responder onWhatsApp)
+    } catch (checkErr) {
+      logger.warn({ err: checkErr.message, phone }, "onWhatsApp_check_failed_sending_anyway");
     }
-    const result = await tenant.sock.sendMessage(jid, { text: body });
+
+    const result = await tenant.sock.sendMessage(targetJid, { text: body });
     const record = {
       ts: new Date().toISOString(),
       direction: "out",
