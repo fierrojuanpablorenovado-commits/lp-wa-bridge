@@ -453,7 +453,37 @@ app.get("/session/:tenantId/check", async (req, res) => {
   }
 });
 
+// ━━━ Auto-reconectar sesiones existentes al arrancar ━━━
+// Si Railway reinicia el proceso, los archivos de auth persisten en el Volume.
+// Esta función los detecta y reconecta sin pedir QR ni código.
+async function autoReconnectSessions() {
+  try {
+    const entries = await fs.readdir(SESSION_DIR, { withFileTypes: true }).catch(() => []);
+    const tenantDirs = entries.filter(e => e.isDirectory()).map(e => e.name);
+    for (const tenantId of tenantDirs) {
+      const authDir = path.join(SESSION_DIR, tenantId, "auth");
+      try {
+        const files = await fs.readdir(authDir).catch(() => []);
+        // Solo reconectar si hay credenciales guardadas (creds.json de Baileys)
+        const hasCreds = files.some(f => f.includes("creds"));
+        if (hasCreds) {
+          logger.info({ tenantId }, "auto_reconnect_starting");
+          // No await — reconectar en paralelo sin bloquear el arranque
+          connectTenant(tenantId, "qr").catch(e =>
+            logger.warn({ tenantId, err: e.message }, "auto_reconnect_failed")
+          );
+        }
+      } catch {}
+    }
+    if (tenantDirs.length === 0) logger.info("no_sessions_to_restore");
+  } catch (e) {
+    logger.warn({ err: e.message }, "auto_reconnect_scan_failed");
+  }
+}
+
 // ━━━ Start ━━━
 app.listen(PORT, () => {
   logger.info({ port: PORT, webhook: !!WEBHOOK_URL }, "lp-wa-bridge listo — QR + Pairing Code");
+  // Reconectar sesiones existentes 2s después de arrancar
+  setTimeout(autoReconnectSessions, 2000);
 });
