@@ -58,7 +58,10 @@ function getTenant(tenantId) {
 function normalizePhone(p) {
   if (!p) return "";
   let n = String(p).replace(/[^\d]/g, "");
-  if (n.length === 10) n = "52" + n;
+  // México: 10 dígitos → 521XXXXXXXXXX (52 = país, 1 = prefijo móvil obligatorio en WA)
+  if (n.length === 10) n = "521" + n;
+  // Si viene con 52 pero sin el 1 (ej. 523312345678), lo corregimos
+  if (n.length === 12 && n.startsWith("52") && !n.startsWith("521")) n = "521" + n.slice(2);
   return n;
 }
 
